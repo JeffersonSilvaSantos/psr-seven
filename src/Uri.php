@@ -1,11 +1,230 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Sofac\Psr\Seven;
 
+use InvalidArgumentException;
 use Psr\Http\Message\UriInterface;
+use Sofac\Standards\Rfc3986\Character;
 
 class Uri implements UriInterface
+
 {
+    /** @var string */
+    private const string HTTP_DEFAULT_HOST = 'localhost';
+
+    /** @var array|int[] */
+    private const array PORT_DEFAULT = ['http' => 80, 'https' => 443, 'ftp' => 21];
+
+    /** @var string Uri scheme. */
+    private string $scheme = '';
+
+    /** @var string Uri user info. */
+    private string $userInfo = '';
+
+    /** @var string Uri host. */
+    private string $host = '';
+
+    /** @var int|null Uri port. */
+    private ?int $port = null;
+
+    /** @var string Uri path. */
+    private string $path = '';
+
+    /** @var string Uri query string. */
+    private string $query = '';
+
+    /** @var string Uri fragment. */
+    private string $fragment = '';
+
+    /**
+     * PSR-7 URI implementation.
+     *
+     * @author Jefferson Silva
+     */
+    public function __construct(string $uri = '')
+    {
+        if ($uri !== '') :
+            $analyzed = $this->parse($uri);
+            if (empty($analyzed)) throw new InvalidArgumentException("URI '{$uri}' is not a valid URI");
+            $this->buildUri($analyzed);
+        endif;
+    }
+
+    /**
+     * Distinguishes between an IPv6 URL and another type of URL.
+     *
+     * @param string $uri
+     * @return string A percent-encoded URL.
+     */
+    private function parseUriOrIpv6(string $uri): string
+    {
+        preg_match("#^(.*://\[[0-9:a-fA-F]+])(.*?)$#", $uri, $match);
+        if ($match) return $match[1] . $this->encodeUri($match[2]);
+        return $uri;
+    }
+
+    /**
+     * performs percent encoding.
+     *
+     * @param string $target
+     * @return string a string encoded in the percent encode pattern.
+     *
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-2.1
+     */
+    private function encodeUri(string $target): string
+    {
+        $pattern = "#[^"
+            . Character::subDelimsForRegex("!", "$", "'", "(", ")", "*", "+", ",", ";")
+            . Character::gemDelimsForRegex("[", "]") . "%]+|" . Character::percentIdentifyRegex() . "#";
+        return preg_replace_callback($pattern, fn($match) => \rawurlencode($match[0]), $target);
+    }
+
+    /**
+     * Which internally used the native parse-url function
+     *
+     * @param string $uri provider.
+     * @return array
+     */
+    private function parse(string $uri): array
+    {
+        $uri = $this->parseUriOrIpv6($uri);
+
+        $parser = parse_url($this->parseUriOrIpv6($uri));
+        return $parser ? array_map('rawurldecode', $parser) : [];
+    }
+
+
+    /**
+     * It constructs the URI, performing the necessary validations.
+     *
+     * @param array $parse The parse function, which internally used the native parse-url function, has been removed.
+     * @return void
+     */
+    private function buildUri(array $parse): void
+    {
+        var_dump($parse);
+        foreach ($parse as $key => $value) :
+            switch ($key) {
+                case 'scheme':
+                    $this->applyScheme($value);
+                    break;
+                case 'host':
+                    $this->applyHost($value);
+                    break;
+                case 'port':
+                    $this->applyPort($value);
+                    break;
+                default;
+            }
+        endforeach;
+    }
+
+    /**
+     * @param Uri $uri
+     * @param string $scheme
+     * @return void
+     *
+     */
+    private function changeScheme(Uri $uri, string $scheme): void
+    {
+
+    }
+
+    private function changeHost(Uri $uri, string $host): void
+    {
+
+    }
+
+    private function changePort(Uri $uri, ?int $port): void
+    {
+
+    }
+
+    /**
+     * validates a scheme following RFC 3986.
+     *
+     * @param string $scheme
+     * @return string
+     *
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-3.1
+     */
+    private function validateScheme(string $scheme): string
+    {
+        if (!preg_match("#^[A-Za-z0-9]+[A-Za-z0-9+-.]*?$#", $scheme))
+            throw new InvalidArgumentException("Scheme '{$scheme}' is not valid");
+        return strtolower($scheme);
+    }
+
+    /**
+     * Responsible for filtering and validating the host.
+     *
+     * @param string $host host obtained from the parse-url function.
+     * @return string eating the host extracted from URI.
+     *
+     * @throws InvalidArgumentException if the host is not a string.
+     *
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-3.2.2
+     */
+    private function validateHost(string $host): string
+    {
+        if (is_numeric($host)) throw new InvalidArgumentException("Host '{$host}' is not numeric");
+        //validate ipv6 \[[0-9:a-fA-F]+])
+        return strtolower($host);
+    }
+
+    private function validatePort(?int $port): ?int
+    {
+        if ($port === null) {
+            return null;
+        }
+
+        if (0 > $port || 0xFFFF < $port) {
+            throw new InvalidArgumentException(
+                sprintf('Invalid port: %d. Must be between 0 and 65535', $port)
+            );
+        }
+
+        return $port;
+    }
+
+    private function applyScheme(string $scheme): void
+    {
+        $this->scheme = $this->validateScheme($scheme);
+    }
+
+    private function applyHost(string $host): void
+    {
+        $this->host = $this->validateHost($host);
+    }
+
+    /**
+     * @param string $port
+     * @return void
+     */
+    private function applyPort(string $port): void
+    {
+        trigger_error('Método gerarRelatorio está incompleto.', E_USER_WARNING);
+        if (!is_numeric($port)) throw new InvalidArgumentException("Port '{$port}' is not numeric");
+
+        var_dump($port);
+        $port = intval($port);
+
+        $validPort = $this->validatePort($port);
+
+        if ($this->scheme !== '') :
+            if (key_exists($this->scheme, self::PORT_DEFAULT)) :
+                if (!in_array($validPort, self::PORT_DEFAULT,true)):
+                    $this->port = $validPort;
+                endif;
+            endif;
+            if (!in_array($validPort, self::PORT_DEFAULT,true)):
+                $this->port = $validPort;
+            endif;
+        endif;
+    }
+
 
     /**
      * Retrieve the scheme component of the URI.
@@ -23,7 +242,7 @@ class Uri implements UriInterface
      */
     public function getScheme(): string
     {
-        // TODO: Implement getScheme() method.
+        return $this->scheme;
     }
 
     /**
@@ -66,7 +285,7 @@ class Uri implements UriInterface
      */
     public function getUserInfo(): string
     {
-        // TODO: Implement getUserInfo() method.
+        return $this->userInfo;
     }
 
     /**
@@ -82,7 +301,7 @@ class Uri implements UriInterface
      */
     public function getHost(): string
     {
-        // TODO: Implement getHost() method.
+        return $this->host;
     }
 
     /**
@@ -102,7 +321,7 @@ class Uri implements UriInterface
      */
     public function getPort(): ?int
     {
-        // TODO: Implement getPort() method.
+        return $this->port;
     }
 
     /**
@@ -132,7 +351,7 @@ class Uri implements UriInterface
      */
     public function getPath(): string
     {
-        // TODO: Implement getPath() method.
+        return $this->path;
     }
 
     /**
@@ -147,7 +366,7 @@ class Uri implements UriInterface
      * any characters. To determine what characters to encode, please refer to
      * RFC 3986, Sections 2 and 3.4.
      *
-     * As an example, if a value in a key/value pair of the query string should
+     * As an example, if a value in a key/value a pair of the query string should
      * include an ampersand ("&") not intended as a delimiter between values,
      * that value MUST be passed in encoded form (e.g., "%26") to the instance.
      *
@@ -157,7 +376,7 @@ class Uri implements UriInterface
      */
     public function getQuery(): string
     {
-        // TODO: Implement getQuery() method.
+        return $this->query;
     }
 
     /**
@@ -178,7 +397,7 @@ class Uri implements UriInterface
      */
     public function getFragment(): string
     {
-        // TODO: Implement getFragment() method.
+        return $this->fragment;
     }
 
     /**
@@ -194,11 +413,13 @@ class Uri implements UriInterface
      *
      * @param string $scheme The scheme to use with the new instance.
      * @return static A new instance with the specified scheme.
-     * @throws \InvalidArgumentException for invalid or unsupported schemes.
+     * @throws InvalidArgumentException for invalid or unsupported schemes.
      */
     public function withScheme(string $scheme): UriInterface
     {
-        // TODO: Implement withScheme() method.
+        $clone = clone $this;
+        $this->changeScheme($clone, $scheme);
+        return $clone;
     }
 
     /**
@@ -230,7 +451,7 @@ class Uri implements UriInterface
      *
      * @param string $host The hostname to use with the new instance.
      * @return static A new instance with the specified host.
-     * @throws \InvalidArgumentException for invalid hostnames.
+     * @throws InvalidArgumentException for invalid hostnames.
      */
     public function withHost(string $host): UriInterface
     {
@@ -252,7 +473,7 @@ class Uri implements UriInterface
      * @param null|int $port The port to use with the new instance; a null value
      *     removes the port information.
      * @return static A new instance with the specified port.
-     * @throws \InvalidArgumentException for invalid ports.
+     * @throws InvalidArgumentException for invalid ports.
      */
     public function withPort(?int $port): UriInterface
     {
@@ -279,7 +500,7 @@ class Uri implements UriInterface
      *
      * @param string $path The path to use with the new instance.
      * @return static A new instance with the specified path.
-     * @throws \InvalidArgumentException for invalid paths.
+     * @throws InvalidArgumentException for invalid paths.
      */
     public function withPath(string $path): UriInterface
     {
@@ -299,7 +520,7 @@ class Uri implements UriInterface
      *
      * @param string $query The query string to use with the new instance.
      * @return static A new instance with the specified query string.
-     * @throws \InvalidArgumentException for invalid query strings.
+     * @throws InvalidArgumentException for invalid query strings.
      */
     public function withQuery(string $query): UriInterface
     {

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "881d26b49496afdb24f8fd94b5f7b4ba",
+    "content-hash": "ba811502a13946ec0202f214d9319375",
     "packages": [
         {
             "name": "psr/http-message",
@@ -58,6 +58,54 @@
                 "source": "https://github.com/php-fig/http-message/tree/2.0"
             },
             "time": "2023-04-04T09:54:51+00:00"
+        },
+        {
+            "name": "sofac/rfc-3986",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/JeffersonSilvaSantos/rfc-3986.git",
+                "reference": "d6e08f21c89bb1a6099550557cd5aa55d92d537e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/JeffersonSilvaSantos/rfc-3986/zipball/d6e08f21c89bb1a6099550557cd5aa55d92d537e",
+                "reference": "d6e08f21c89bb1a6099550557cd5aa55d92d537e",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.4"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Sofac\\Standards\\Rfc3986\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Jefferson Silva",
+                    "email": "jeffersonprintsilva@gmail.com"
+                }
+            ],
+            "description": "Working with URIs/URLs following Standard 3986",
+            "keywords": [
+                "3986",
+                "Standard 3986",
+                "Standard-3986",
+                "character",
+                "rfc",
+                "sofac"
+            ],
+            "support": {
+                "issues": "https://github.com/JeffersonSilvaSantos/rfc-3986/issues",
+                "source": "https://github.com/JeffersonSilvaSantos/rfc-3986/tree/v1.0.0"
+            },
+            "time": "2026-04-11T01:21:18+00:00"
         }
     ],
     "packages-dev": [],
