@@ -61,23 +61,25 @@ class Uri implements UriInterface
     private function parseUriOrIpv6(string $uri): string
     {
         preg_match("#^(.*://\[[0-9:a-fA-F]+])(.*?)$#", $uri, $match);
-        if ($match) return $match[1] . $this->encodeUri($match[2]);
-        return $uri;
+        if ($match) return $match[1] . $this->encodePercent($match[2]);
+        return $this->encodePercent($uri);
     }
 
     /**
      * performs percent encoding.
      *
      * @param string $target
+     * @param string|null $includeChar
      * @return string a string encoded in the percent encode pattern.
      *
      * @see https://datatracker.ietf.org/doc/html/rfc3986#section-2.1
      */
-    private function encodeUri(string $target): string
+    private function encodePercent(string $target, ?string $includeChar = null): string
     {
+        $char = $includeChar !== null ? $includeChar : '';
         $pattern = "#[^"
             . Character::subDelimsForRegex("!", "$", "'", "(", ")", "*", "+", ",", ";")
-            . Character::gemDelimsForRegex("[", "]") . "%]+|" . Character::percentIdentifyRegex() . "#";
+            . Character::gemDelimsForRegex("[", "]") . $char ."%]+|" . Character::percentIdentifyRegex() . "#";
         return preg_replace_callback($pattern, fn($match) => \rawurlencode($match[0]), $target);
     }
 
@@ -89,9 +91,11 @@ class Uri implements UriInterface
      */
     private function parse(string $uri): array
     {
-        $uri = $this->parseUriOrIpv6($uri);
 
+        $uri = $this->parseUriOrIpv6($uri);
+        var_dump($uri);
         $parser = parse_url($this->parseUriOrIpv6($uri));
+
         return $parser ? array_map('rawurldecode', $parser) : [];
     }
 
@@ -104,17 +108,25 @@ class Uri implements UriInterface
      */
     private function buildUri(array $parse): void
     {
-        var_dump($parse);
         foreach ($parse as $key => $value) :
             switch ($key) {
                 case 'scheme':
-                    $this->applyScheme($value);
+                    $this->changeScheme($this, $value);
                     break;
                 case 'host':
-                    $this->applyHost($value);
+                    $this->changeHost($this, $value);
                     break;
                 case 'port':
-                    $this->applyPort($value);
+                    $this->changePort($this, $value);
+                    break;
+                case 'path':
+                    $this->changePath($this, $value);
+                    break;
+                case 'query':
+                    $this->changeQuery($this, $value);
+                    break;
+                case 'fragment':
+                    $this->changeFragment($this, $value);
                     break;
                 default;
             }
@@ -124,35 +136,100 @@ class Uri implements UriInterface
     /**
      * @param Uri $uri
      * @param string $scheme
-     * @return void
      *
+     * @return void
+     * @throws InvalidArgumentException If the schema fails validation, see RFC 3986#section-3.1.
+     *
+     * @see https://datatracker.ietf.org/doc/html/rfc3986#section-3.1
      */
     private function changeScheme(Uri $uri, string $scheme): void
     {
+        $scheme = $this->validateScheme($scheme);
+        if ($scheme === '') :
+            $uri->scheme = '';
+            $uri->changePort($this, null);
+            return;
+        endif;
 
+        $uri->scheme = $scheme;
+
+        $uri->changePort($uri, $uri->port);
     }
 
     private function changeHost(Uri $uri, string $host): void
     {
-
-    }
-
-    private function changePort(Uri $uri, ?int $port): void
-    {
-
+        $host = $this->validateHost($host);
+        $uri->host = $host;
     }
 
     /**
-     * validates a scheme following RFC 3986.
+     * @param Uri $uri
+     * @param string|int|null $port
+     * @return void
+     */
+    private function changePort(Uri $uri, string|int|null $port): void
+    {
+        $port = $uri->validatePort($port);
+
+        if ($port === null || $uri->scheme === '') :
+            $uri->port = null;
+            return;
+        endif;
+
+        if (key_exists($uri->scheme, self::PORT_DEFAULT) && !in_array($port, $uri::PORT_DEFAULT)) :
+
+            $uri->port = $port;
+            return;
+        endif;
+
+        if (!key_exists($uri->scheme, self::PORT_DEFAULT) && !in_array($port, $uri::PORT_DEFAULT)) :
+            $uri->port = $port;
+            return;
+        endif;
+
+
+        $uri->port = null;
+    }
+
+    private function changePath(Uri $uri, string $path): void
+    {
+        $uri->path = $this->validatePath($path);
+    }
+
+    private function validatePath(string $path): string
+    {
+        return $this->encodePercent($path);
+    }
+
+    private function changeQuery(Uri $uri, string $query): void
+    {
+        $uri->query = $this->validateQueryOrFragment($query);
+    }
+
+    private function validateQueryOrFragment(string $query): string
+    {
+        return $this->encodePercent($query);
+    }
+
+    private function changeFragment(Uri $uri, string $fragment): void
+    {
+        $uri->fragment = $this->validateQueryOrFragment($fragment);
+    }
+
+    /**
+     * Validates a scheme following RFC 3986.
      *
-     * @param string $scheme
-     * @return string
+     * @param string $scheme If an empty string is passed,
+     * it is understood that the schema, if it exists, will be removed.
+     * @return string A scheme normalized to lowercase
+     *
+     * @throws InvalidArgumentException If the schema fails validation, see RFC 3986#section-3.1.
      *
      * @see https://datatracker.ietf.org/doc/html/rfc3986#section-3.1
      */
     private function validateScheme(string $scheme): string
     {
-        if (!preg_match("#^[A-Za-z0-9]+[A-Za-z0-9+-.]*?$#", $scheme))
+        if (!preg_match("#^$|^[A-Za-z0-9]+[A-Za-z0-9+-.]*?$#", $scheme))
             throw new InvalidArgumentException("Scheme '{$scheme}' is not valid");
         return strtolower($scheme);
     }
@@ -174,11 +251,16 @@ class Uri implements UriInterface
         return strtolower($host);
     }
 
-    private function validatePort(?int $port): ?int
+    private function validatePort(string|int|null $port): ?int
     {
         if ($port === null) {
             return null;
         }
+
+        if (is_string($port)) :
+            if (!is_numeric($port)) throw new InvalidArgumentException("Port '{$port}' is not numeric");
+            $port = (int)$port;
+        endif;
 
         if (0 > $port || 0xFFFF < $port) {
             throw new InvalidArgumentException(
@@ -188,43 +270,6 @@ class Uri implements UriInterface
 
         return $port;
     }
-
-    private function applyScheme(string $scheme): void
-    {
-        $this->scheme = $this->validateScheme($scheme);
-    }
-
-    private function applyHost(string $host): void
-    {
-        $this->host = $this->validateHost($host);
-    }
-
-    /**
-     * @param string $port
-     * @return void
-     */
-    private function applyPort(string $port): void
-    {
-        trigger_error('Método gerarRelatorio está incompleto.', E_USER_WARNING);
-        if (!is_numeric($port)) throw new InvalidArgumentException("Port '{$port}' is not numeric");
-
-        var_dump($port);
-        $port = intval($port);
-
-        $validPort = $this->validatePort($port);
-
-        if ($this->scheme !== '') :
-            if (key_exists($this->scheme, self::PORT_DEFAULT)) :
-                if (!in_array($validPort, self::PORT_DEFAULT,true)):
-                    $this->port = $validPort;
-                endif;
-            endif;
-            if (!in_array($validPort, self::PORT_DEFAULT,true)):
-                $this->port = $validPort;
-            endif;
-        endif;
-    }
-
 
     /**
      * Retrieve the scheme component of the URI.
@@ -417,6 +462,7 @@ class Uri implements UriInterface
      */
     public function withScheme(string $scheme): UriInterface
     {
+        if ($scheme === $this->scheme) return $this;
         $clone = clone $this;
         $this->changeScheme($clone, $scheme);
         return $clone;
@@ -477,7 +523,10 @@ class Uri implements UriInterface
      */
     public function withPort(?int $port): UriInterface
     {
-        // TODO: Implement withPort() method.
+        if ($port === $this->port) return $this;
+        $clone = clone $this;
+        $this->changePort($clone, $port);
+        return $clone;
     }
 
     /**
