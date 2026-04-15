@@ -15,7 +15,7 @@ class Uri implements UriInterface
     private const string HTTP_DEFAULT_HOST = 'localhost';
 
     /** @var array|int[] */
-    private const array PORT_DEFAULT = ['http' => 80, 'https' => 443, 'ftp' => 21];
+    private const array PORT_DEFAULT = ['http' => 80, 'https' => 443, 'ftp' => 21, 'telnet' => 23];
 
     /** @var string Uri scheme. */
     private string $scheme = '';
@@ -79,7 +79,7 @@ class Uri implements UriInterface
         $char = $includeChar !== null ? $includeChar : '';
         $pattern = "#[^"
             . Character::subDelimsForRegex("!", "$", "'", "(", ")", "*", "+", ",", ";")
-            . Character::gemDelimsForRegex("[", "]") . $char ."%]+|" . Character::percentIdentifyRegex() . "#";
+            . Character::gemDelimsForRegex("[", "]") . $char . "%]+|" . Character::percentIdentifyRegex() . "#";
         return preg_replace_callback($pattern, fn($match) => \rawurlencode($match[0]), $target);
     }
 
@@ -127,6 +127,12 @@ class Uri implements UriInterface
                     break;
                 case 'fragment':
                     $this->changeFragment($this, $value);
+                    break;
+                case 'user':
+                    $this->changeUserInfo($this, $value);
+                    break;
+                case 'pass':
+                    $this->changeUserInfo($this, null, $value);
                     break;
                 default;
             }
@@ -196,6 +202,41 @@ class Uri implements UriInterface
         $uri->path = $this->validatePath($path);
     }
 
+    public function validateUserInfo(?string $userInfo): ?string
+    {
+        if ($userInfo !== null) :
+            return $this->encodePercent($userInfo, "?");
+        endif;
+        return null;
+    }
+
+    private function changeUserInfo(Uri $uri, ?string $user = null, ?string $pass = null): void
+    {
+        /* USER */
+        $user = $user !== null && $user !== '' ? $this->encodePercent($user, "?") : $user;
+        $pass = $pass !== null && $pass !== '' ? $this->encodePercent($pass, "?") : $pass;
+        if ($user === '') $uri->userInfo = '';
+        if ($user !== null && $user !== '' && $uri->userInfo !== '') :
+            $userInfo = explode(":", $uri->userInfo);
+            $uri->userInfo = $user;
+            $uri->userInfo .= isset($userInfo[1]) ? ":" . $userInfo[1] : '';
+        endif;
+        if ($user !== null && $user !== '' && $uri->userInfo === '') $uri->userInfo = $user;
+
+        /* PASS */
+        if ($pass === '' && $uri->userInfo !== '') :
+            $userInfo = explode(':', $uri->userInfo);
+            $uri->userInfo = $userInfo[0];
+        endif;
+
+        if ($pass !== '' && $pass !== null && $uri->userInfo !== '') :
+            $userInfo = explode(':', $uri->userInfo);
+            $userInfo = $userInfo[0] .= ":" . $pass;
+            $uri->userInfo = $userInfo;
+        endif;
+
+    }
+
     private function validatePath(string $path): string
     {
         return $this->encodePercent($path);
@@ -208,12 +249,18 @@ class Uri implements UriInterface
 
     private function validateQueryOrFragment(string $query): string
     {
-        return $this->encodePercent($query);
+        return $this->encodePercent($query, "?");
     }
 
     private function changeFragment(Uri $uri, string $fragment): void
     {
         $uri->fragment = $this->validateQueryOrFragment($fragment);
+    }
+
+    private function changeAuthority(Uri $uri, string $authority): void
+    {
+
+
     }
 
     /**
@@ -484,7 +531,15 @@ class Uri implements UriInterface
      */
     public function withUserInfo(string $user, ?string $password = null): UriInterface
     {
-        // TODO: Implement withUserInfo() method.
+        if ($user !== '' && $password !== '' && $password !== null) :
+            $user = $this->encodePercent($user, "?");
+            $password = $this->encodePercent($password, "?");
+            $userInfo = "{$user}:{$password}";
+            if ($this->userInfo === $userInfo) return $this;
+        endif;
+        $clone = clone $this;
+        $this->changeUserInfo($clone, $user, $password);
+        return $clone;
     }
 
     /**
@@ -501,7 +556,11 @@ class Uri implements UriInterface
      */
     public function withHost(string $host): UriInterface
     {
-        // TODO: Implement withHost() method.
+        $host = $this->validateHost($host);
+        if ($host === $this->host) return $this;
+        $clone = clone $this;
+        $this->changeHost($clone, $host);
+        return $clone;
     }
 
     /**
@@ -553,7 +612,10 @@ class Uri implements UriInterface
      */
     public function withPath(string $path): UriInterface
     {
-        // TODO: Implement withPath() method.
+        if ($path === $this->path) return $this;
+        $clone = clone $this;
+        $this->changePath($clone, $path);
+        return $clone;
     }
 
     /**
@@ -573,7 +635,10 @@ class Uri implements UriInterface
      */
     public function withQuery(string $query): UriInterface
     {
-        // TODO: Implement withQuery() method.
+        if ($query === $this->query) return $this;
+        $clone = clone $this;
+        $this->changeQuery($clone, $query);
+        return $clone;
     }
 
     /**
@@ -592,7 +657,10 @@ class Uri implements UriInterface
      */
     public function withFragment(string $fragment): UriInterface
     {
-        // TODO: Implement withFragment() method.
+        if ($fragment === $this->fragment) return $this;
+        $clone = clone $this;
+        $this->changeFragment($clone, $fragment);
+        return $clone;
     }
 
     /**
